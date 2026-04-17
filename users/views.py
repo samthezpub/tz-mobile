@@ -94,3 +94,16 @@ class MeView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+    def delete(self, request):
+        BlacklistedToken.objects.get_or_create(
+            user=request.user,
+            token=request.auth,
+        )
+        request.user.is_active = False
+        request.user.save()
+
+        return Response(
+            {"message": "Account deleted successfully."},
+            status=status.HTTP_200_OK,
+        )

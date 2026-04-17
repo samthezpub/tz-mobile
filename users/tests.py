@@ -221,6 +221,43 @@ class LoginViewTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_delete_profile_me_soft_deletes_user(self):
+        login_response = self.client.post(
+            self.login_url,
+            {"email": "ivan@example.com", "password": "strongpass123"},
+            format="json",
+        )
+        token = login_response.data["token"]
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        delete_response = self.client.delete(self.profile_me_url)
+        me_response = self.client.get(self.profile_me_url)
+
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(delete_response.data["message"], "Account deleted successfully.")
+        self.assertTrue(BlacklistedToken.objects.filter(token=token).exists())
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertEqual(me_response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_login_deleted_user_is_forbidden(self):
+        self.user.is_active = False
+        self.user.save()
+
+        response = self.client.post(
+            self.login_url,
+            {"email": "ivan@example.com", "password": "strongpass123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "User account is inactive.")
+
+    def test_delete_profile_me_without_token(self):
+        response = self.client.delete(self.profile_me_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_get_me_without_token(self):
         response = self.client.get(self.me_url)
 
