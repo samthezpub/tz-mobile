@@ -3,13 +3,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users.models import BlacklistedToken
 from users.serializers import (
     LoginSerializer,
     RegisterSerializer,
+    UserBriefSerializer,
     UserProfileUpdateSerializer,
     UserSerializer,
 )
+from users.services import blacklist_token
 from users.tokens import create_access_token
 
 
@@ -36,23 +37,14 @@ class RegisterView(APIView):
 class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            detail = serializer.errors.get("detail", ["Login failed."])[0]
-            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
-
+        serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         token = create_access_token(user)
 
         return Response(
             {
                 "token": token,
-                "user": {
-                    "id": user.id,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "middle_name": user.middle_name,
-                    "email": user.email,
-                },
+                "user": UserBriefSerializer(user).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -62,10 +54,7 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        BlacklistedToken.objects.get_or_create(
-            user=request.user,
-            token=request.auth,
-        )
+        blacklist_token(request.user, request.auth)
         return Response(
             {"message": "Logout successful."},
             status=status.HTTP_200_OK,
@@ -96,12 +85,9 @@ class MeView(APIView):
         )
 
     def delete(self, request):
-        BlacklistedToken.objects.get_or_create(
-            user=request.user,
-            token=request.auth,
-        )
+        blacklist_token(request.user, request.auth)
         request.user.is_active = False
-        request.user.save()
+        request.user.save(update_fields=["is_active"])
 
         return Response(
             {"message": "Account deleted successfully."},

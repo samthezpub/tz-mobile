@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,10 +21,13 @@ class AccessRuleListView(APIView):
 class AccessRuleUpdateView(APIView):
     def patch(self, request, pk):
         check_admin_role(request.user)
-        access_rule = AccessRule.objects.select_related(
-            "role",
-            "business_element",
-        ).get(pk=pk)
+        access_rule = get_object_or_404(
+            AccessRule.objects.select_related(
+                "role",
+                "business_element",
+            ),
+            pk=pk,
+        )
         serializer = AccessRuleSerializer(
             access_rule,
             data=request.data,

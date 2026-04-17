@@ -1,6 +1,14 @@
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 
 from users.models import AccessRule, User
+
+
+def validate_human_name(value):
+    cleaned_value = value.strip()
+    if not cleaned_value:
+        raise serializers.ValidationError("This field may not be blank.")
+    return cleaned_value
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -19,6 +27,18 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
+class UserBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "first_name",
+            "last_name",
+            "middle_name",
+            "email",
+        )
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     password_repeat = serializers.CharField(write_only=True, min_length=8)
@@ -34,7 +54,17 @@ class RegisterSerializer(serializers.ModelSerializer):
             "password_repeat",
         )
 
+    def validate_first_name(self, value):
+        return validate_human_name(value)
+
+    def validate_last_name(self, value):
+        return validate_human_name(value)
+
+    def validate_middle_name(self, value):
+        return value.strip()
+
     def validate_email(self, value):
+        value = value.strip().lower()
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("User with this email already exists.")
         return value
@@ -57,22 +87,21 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        email = attrs["email"]
+        email = attrs["email"].strip().lower()
         password = attrs["password"]
 
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise serializers.ValidationError(
-                {"detail": "Invalid email or password."}
-            )
+            raise AuthenticationFailed("Invalid email or password.")
 
         if not user.check_password(password):
-            raise serializers.ValidationError({"detail": "Invalid email or password."})
+            raise AuthenticationFailed("Invalid email or password.")
 
         if not user.is_active:
-            raise serializers.ValidationError({"detail": "User account is inactive."})
+            raise PermissionDenied("User account is inactive.")
 
+        attrs["email"] = email
         attrs["user"] = user
         return attrs
 
@@ -87,7 +116,17 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "email",
         )
 
+    def validate_first_name(self, value):
+        return validate_human_name(value)
+
+    def validate_last_name(self, value):
+        return validate_human_name(value)
+
+    def validate_middle_name(self, value):
+        return value.strip()
+
     def validate_email(self, value):
+        value = value.strip().lower()
         user = self.instance
         if (
             User.objects.filter(email__iexact=value)

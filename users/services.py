@@ -1,6 +1,6 @@
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 
-from users.models import AccessRule
+from users.models import AccessRule, BlacklistedToken
 
 
 ACTION_PERMISSION_FIELDS = {
@@ -48,10 +48,28 @@ def check_admin_role(user):
     if not getattr(user, "is_authenticated", False):
         raise NotAuthenticated("Authentication credentials were not provided.")
 
-    if not user.user_roles.filter(role__name="admin").exists():
+    if not is_admin_user(user):
         raise PermissionDenied("Admin role is required.")
 
     return True
+
+
+def is_admin_user(user):
+    if not getattr(user, "is_authenticated", False):
+        return False
+
+    return user.user_roles.filter(role__name="admin").exists()
+
+
+def blacklist_token(user, token):
+    if not token:
+        return None
+
+    blacklisted_token, _ = BlacklistedToken.objects.get_or_create(
+        user=user,
+        token=token,
+    )
+    return blacklisted_token
 
 
 def _get_permission_field(action, check_all):

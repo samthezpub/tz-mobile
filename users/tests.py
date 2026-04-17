@@ -2,8 +2,8 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.management import call_command
 from django.db import IntegrityError
 from django.urls import reverse
-from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework import status
+from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APITestCase
 
 from users.models import (
@@ -80,6 +80,39 @@ class RegisterViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("email", response.data)
 
+    def test_register_user_normalizes_email_and_names(self):
+        payload = {
+            "first_name": "  Ivan  ",
+            "last_name": "  Ivanov  ",
+            "middle_name": "  Ivanovich  ",
+            "email": "  IVAN@EXAMPLE.COM  ",
+            "password": "strongpass123",
+            "password_repeat": "strongpass123",
+        }
+
+        response = self.client.post(self.url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["user"]["first_name"], "Ivan")
+        self.assertEqual(response.data["user"]["last_name"], "Ivanov")
+        self.assertEqual(response.data["user"]["middle_name"], "Ivanovich")
+        self.assertEqual(response.data["user"]["email"], "ivan@example.com")
+
+    def test_register_user_rejects_blank_first_name(self):
+        payload = {
+            "first_name": "   ",
+            "last_name": "Ivanov",
+            "middle_name": "Ivanovich",
+            "email": "ivan@example.com",
+            "password": "strongpass123",
+            "password_repeat": "strongpass123",
+        }
+
+        response = self.client.post(self.url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("first_name", response.data)
+
 
 class LoginViewTests(APITestCase):
     def setUp(self):
@@ -97,7 +130,7 @@ class LoginViewTests(APITestCase):
 
     def test_login_user_successfully(self):
         payload = {
-            "email": "ivan@example.com",
+            "email": "  IVAN@example.com  ",
             "password": "strongpass123",
         }
 
@@ -116,7 +149,7 @@ class LoginViewTests(APITestCase):
 
         response = self.client.post(self.login_url, payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data["detail"], "Invalid email or password.")
 
     def test_get_me_with_bearer_token(self):
@@ -263,7 +296,7 @@ class LoginViewTests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data["detail"], "User account is inactive.")
 
     def test_delete_profile_me_without_token(self):
@@ -541,6 +574,18 @@ class AccessRuleAdminApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_gets_404_for_missing_access_rule(self):
+        update_url = reverse("access-rules-update", args=[999999])
+
+        self._authenticate(self.admin_user)
+        response = self.client.patch(
+            update_url,
+            {"create_permission": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def _create_user_with_role(self, email, role_name):
         user = User.objects.create_user(
