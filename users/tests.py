@@ -15,6 +15,7 @@ from users.models import (
     UserRole,
 )
 from users.services import check_access_permission, has_access_permission
+from users.tokens import create_access_token
 
 
 class RegisterViewTests(APITestCase):
@@ -404,3 +405,73 @@ class AccessPermissionServiceTests(APITestCase):
                 check_all=True,
             )
         )
+
+
+class MockBusinessResourcesTests(APITestCase):
+    def setUp(self):
+        call_command("seed_roles_permissions")
+        self.products_url = reverse("products-list")
+        self.stores_url = reverse("stores-list")
+        self.orders_url = reverse("orders-list")
+
+    def test_products_requires_authentication(self):
+        response = self.client.get(self.products_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_guest_can_view_products_and_stores(self):
+        user = self._create_user_with_role("guest@example.com", "guest")
+
+        self._authenticate(user)
+        products_response = self.client.get(self.products_url)
+        stores_response = self.client.get(self.stores_url)
+
+        self.assertEqual(products_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(stores_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(products_response.data["items"]), 3)
+        self.assertEqual(len(stores_response.data["items"]), 2)
+
+    def test_guest_cannot_view_orders(self):
+        user = self._create_user_with_role("guest@example.com", "guest")
+
+        self._authenticate(user)
+        response = self.client.get(self.orders_url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_user_can_view_orders(self):
+        user = self._create_user_with_role("user@example.com", "user")
+
+        self._authenticate(user)
+        response = self.client.get(self.orders_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["items"]), 2)
+
+    def test_manager_can_view_all_mock_resources(self):
+        user = self._create_user_with_role("manager@example.com", "manager")
+
+        self._authenticate(user)
+        products_response = self.client.get(self.products_url)
+        stores_response = self.client.get(self.stores_url)
+        orders_response = self.client.get(self.orders_url)
+
+        self.assertEqual(products_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(stores_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(orders_response.status_code, status.HTTP_200_OK)
+
+    def _create_user_with_role(self, email, role_name):
+        user = User.objects.create_user(
+            email=email,
+            password="strongpass123",
+            first_name="Mock",
+            last_name="User",
+            middle_name="Test",
+        )
+        role = Role.objects.get(name=role_name)
+        UserRole.objects.create(user=user, role=role)
+        return user
+
+    def _authenticate(self, user):
+        token = create_access_token(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
