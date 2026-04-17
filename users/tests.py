@@ -1,3 +1,4 @@
+from django.core.management import call_command
 from django.db import IntegrityError
 from django.urls import reverse
 from rest_framework import status
@@ -273,12 +274,19 @@ class LoginViewTests(APITestCase):
 
 
 class RBACModelsTests(APITestCase):
+    def setUp(self):
+        call_command("seed_roles_permissions")
+
     def test_seed_roles_and_business_elements_exist(self):
         self.assertTrue(Role.objects.filter(name="admin").exists())
         self.assertTrue(Role.objects.filter(name="manager").exists())
         self.assertTrue(Role.objects.filter(name="user").exists())
-        self.assertTrue(BusinessElement.objects.filter(code="profile").exists())
+        self.assertTrue(Role.objects.filter(name="guest").exists())
         self.assertTrue(BusinessElement.objects.filter(code="users").exists())
+        self.assertTrue(BusinessElement.objects.filter(code="products").exists())
+        self.assertTrue(BusinessElement.objects.filter(code="stores").exists())
+        self.assertTrue(BusinessElement.objects.filter(code="orders").exists())
+        self.assertTrue(BusinessElement.objects.filter(code="access_rules").exists())
 
     def test_admin_has_full_access_rule_for_users(self):
         access_rule = AccessRule.objects.get(
@@ -294,6 +302,17 @@ class RBACModelsTests(APITestCase):
         self.assertTrue(access_rule.delete_permission)
         self.assertTrue(access_rule.delete_all_permission)
 
+    def test_guest_has_limited_permissions(self):
+        products_rule = AccessRule.objects.get(
+            role__name="guest",
+            business_element__code="products",
+        )
+
+        self.assertTrue(products_rule.read_permission)
+        self.assertFalse(products_rule.create_permission)
+        self.assertFalse(products_rule.update_permission)
+        self.assertFalse(products_rule.delete_permission)
+
     def test_user_role_relation_is_unique(self):
         user = User.objects.create_user(
             email="rbac@example.com",
@@ -308,3 +327,17 @@ class RBACModelsTests(APITestCase):
 
         with self.assertRaises(IntegrityError):
             UserRole.objects.create(user=user, role=role)
+
+    def test_seed_command_is_idempotent(self):
+        call_command("seed_roles_permissions")
+
+        self.assertEqual(Role.objects.filter(name="admin").count(), 1)
+        self.assertEqual(Role.objects.filter(name="guest").count(), 1)
+        self.assertEqual(BusinessElement.objects.filter(code="orders").count(), 1)
+        self.assertEqual(
+            AccessRule.objects.filter(
+                role__name="manager",
+                business_element__code="orders",
+            ).count(),
+            1,
+        )
