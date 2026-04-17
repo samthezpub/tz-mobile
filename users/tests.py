@@ -2,7 +2,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from users.models import User
+from users.models import BlacklistedToken, User
 
 
 class RegisterViewTests(APITestCase):
@@ -71,6 +71,7 @@ class RegisterViewTests(APITestCase):
 class LoginViewTests(APITestCase):
     def setUp(self):
         self.login_url = reverse("login")
+        self.logout_url = reverse("logout")
         self.me_url = reverse("me")
         self.profile_me_url = reverse("users-me")
         self.user = User.objects.create_user(
@@ -123,6 +124,28 @@ class LoginViewTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION="Bearer invalid-token")
 
         response = self.client.get(self.me_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_logout_blacklists_current_token(self):
+        login_response = self.client.post(
+            self.login_url,
+            {"email": "ivan@example.com", "password": "strongpass123"},
+            format="json",
+        )
+        token = login_response.data["token"]
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        logout_response = self.client.post(self.logout_url, format="json")
+        me_response = self.client.get(self.me_url)
+
+        self.assertEqual(logout_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(logout_response.data["message"], "Logout successful.")
+        self.assertTrue(BlacklistedToken.objects.filter(token=token).exists())
+        self.assertEqual(me_response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_logout_without_token(self):
+        response = self.client.post(self.logout_url, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 

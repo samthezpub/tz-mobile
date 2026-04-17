@@ -1,6 +1,6 @@
 from rest_framework import authentication
 
-from users.models import User
+from users.models import BlacklistedToken, User
 from users.tokens import decode_access_token
 
 
@@ -17,6 +17,9 @@ class BearerTokenAuthentication(authentication.BaseAuthentication):
             return None
 
         token = parts[1]
+
+        if BlacklistedToken.objects.filter(token=token).exists():
+            return None
 
         try:
             payload = decode_access_token(token)

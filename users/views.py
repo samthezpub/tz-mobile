@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from users.models import BlacklistedToken
 from users.serializers import (
     LoginSerializer,
     RegisterSerializer,
@@ -53,6 +54,20 @@ class LoginView(APIView):
                     "email": user.email,
                 },
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        BlacklistedToken.objects.get_or_create(
+            user=request.user,
+            token=request.auth,
+        )
+        return Response(
+            {"message": "Logout successful."},
             status=status.HTTP_200_OK,
         )
 
