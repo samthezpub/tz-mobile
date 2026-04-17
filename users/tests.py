@@ -1,6 +1,8 @@
+from django.contrib.auth.models import AnonymousUser
 from django.core.management import call_command
 from django.db import IntegrityError
 from django.urls import reverse
+from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -12,6 +14,7 @@ from users.models import (
     User,
     UserRole,
 )
+from users.services import check_access_permission, has_access_permission
 
 
 class RegisterViewTests(APITestCase):
@@ -340,4 +343,64 @@ class RBACModelsTests(APITestCase):
                 business_element__code="orders",
             ).count(),
             1,
+        )
+
+
+class AccessPermissionServiceTests(APITestCase):
+    def setUp(self):
+        call_command("seed_roles_permissions")
+        self.user = User.objects.create_user(
+            email="permissions@example.com",
+            password="strongpass123",
+            first_name="Access",
+            last_name="User",
+            middle_name="Test",
+        )
+        self.user_role = Role.objects.get(name="user")
+        self.manager_role = Role.objects.get(name="manager")
+        self.guest_role = Role.objects.get(name="guest")
+
+    def test_unauthenticated_user_gets_401(self):
+        with self.assertRaises(NotAuthenticated):
+            check_access_permission(AnonymousUser(), "orders", "read")
+
+    def test_user_with_role_and_permission_gets_access(self):
+        UserRole.objects.create(user=self.user, role=self.user_role)
+
+        result = check_access_permission(self.user, "orders", "create")
+
+        self.assertTrue(result)
+
+    def test_authenticated_user_without_permission_gets_403(self):
+        UserRole.objects.create(user=self.user, role=self.guest_role)
+
+        with self.assertRaises(PermissionDenied):
+            check_access_permission(self.user, "orders", "delete")
+
+    def test_service_supports_all_permissions(self):
+        UserRole.objects.create(user=self.user, role=self.manager_role)
+
+        result = check_access_permission(
+            self.user,
+            "orders",
+            "read",
+            check_all=True,
+        )
+
+        self.assertTrue(result)
+
+    def test_has_access_permission_returns_false_when_no_roles(self):
+        self.assertFalse(has_access_permission(self.user, "orders", "read"))
+
+    def test_any_user_role_can_grant_access(self):
+        UserRole.objects.create(user=self.user, role=self.guest_role)
+        UserRole.objects.create(user=self.user, role=self.manager_role)
+
+        self.assertTrue(
+            has_access_permission(
+                self.user,
+                "users",
+                "update",
+                check_all=True,
+            )
         )
