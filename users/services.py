@@ -44,6 +44,16 @@ def check_access_permission(user, business_element_code, action, check_all=False
     return True
 
 
+def check_admin_role(user):
+    if not getattr(user, "is_authenticated", False):
+        raise NotAuthenticated("Authentication credentials were not provided.")
+
+    if not user.user_roles.filter(role__name="admin").exists():
+        raise PermissionDenied("Admin role is required.")
+
+    return True
+
+
 def _get_permission_field(action, check_all):
     if action not in ACTION_PERMISSION_FIELDS:
         raise ValueError("Unsupported action.")

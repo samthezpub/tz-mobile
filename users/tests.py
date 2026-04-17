@@ -475,3 +475,85 @@ class MockBusinessResourcesTests(APITestCase):
     def _authenticate(self, user):
         token = create_access_token(user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+
+class AccessRuleAdminApiTests(APITestCase):
+    def setUp(self):
+        call_command("seed_roles_permissions")
+        self.list_url = reverse("access-rules-list")
+        self.admin_user = self._create_user_with_role("admin@example.com", "admin")
+        self.manager_user = self._create_user_with_role("manager@example.com", "manager")
+
+    def test_list_access_rules_requires_authentication(self):
+        response = self.client.get(self.list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_non_admin_cannot_list_access_rules(self):
+        self._authenticate(self.manager_user)
+
+        response = self.client.get(self.list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_list_access_rules(self):
+        self._authenticate(self.admin_user)
+
+        response = self.client.get(self.list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreater(len(response.data["items"]), 0)
+
+    def test_admin_can_update_access_rule(self):
+        access_rule = AccessRule.objects.get(
+            role__name="guest",
+            business_element__code="products",
+        )
+        update_url = reverse("access-rules-update", args=[access_rule.id])
+
+        self._authenticate(self.admin_user)
+        response = self.client.patch(
+            update_url,
+            {"create_permission": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["message"],
+            "Access rule updated successfully.",
+        )
+        access_rule.refresh_from_db()
+        self.assertTrue(access_rule.create_permission)
+
+    def test_non_admin_cannot_update_access_rule(self):
+        access_rule = AccessRule.objects.get(
+            role__name="guest",
+            business_element__code="products",
+        )
+        update_url = reverse("access-rules-update", args=[access_rule.id])
+
+        self._authenticate(self.manager_user)
+        response = self.client.patch(
+            update_url,
+            {"create_permission": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def _create_user_with_role(self, email, role_name):
+        user = User.objects.create_user(
+            email=email,
+            password="strongpass123",
+            first_name="Admin",
+            last_name="Api",
+            middle_name="Test",
+        )
+        role = Role.objects.get(name=role_name)
+        UserRole.objects.create(user=user, role=role)
+        return user
+
+    def _authenticate(self, user):
+        token = create_access_token(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")

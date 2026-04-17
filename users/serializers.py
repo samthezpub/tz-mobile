@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from users.models import User
+from users.models import AccessRule, User
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -96,3 +96,35 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         ):
             raise serializers.ValidationError("User with this email already exists.")
         return value
+
+
+class AccessRuleSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source="role.name", read_only=True)
+    business_element_code = serializers.CharField(
+        source="business_element.code",
+        read_only=True,
+    )
+
+    class Meta:
+        model = AccessRule
+        fields = (
+            "id",
+            "role",
+            "role_name",
+            "business_element",
+            "business_element_code",
+            "read_permission",
+            "read_all_permission",
+            "create_permission",
+            "update_permission",
+            "update_all_permission",
+            "delete_permission",
+            "delete_all_permission",
+        )
+        read_only_fields = (
+            "id",
+            "role",
+            "role_name",
+            "business_element",
+            "business_element_code",
+        )
