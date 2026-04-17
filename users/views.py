@@ -3,7 +3,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users.serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from users.serializers import (
+    LoginSerializer,
+    RegisterSerializer,
+    UserProfileUpdateSerializer,
+    UserSerializer,
+)
 from users.tokens import create_access_token
 
 
@@ -57,3 +62,20 @@ class MeView(APIView):
 
     def get(self, request):
         return Response({"user": UserSerializer(request.user).data})
+
+    def patch(self, request):
+        serializer = UserProfileUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                "message": "Profile updated successfully.",
+                "user": UserSerializer(request.user).data,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -75,3 +75,24 @@ class LoginSerializer(serializers.Serializer):
 
         attrs["user"] = user
         return attrs
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "first_name",
+            "last_name",
+            "middle_name",
+            "email",
+        )
+
+    def validate_email(self, value):
+        user = self.instance
+        if (
+            User.objects.filter(email__iexact=value)
+            .exclude(id=user.id)
+            .exists()
+        ):
+            raise serializers.ValidationError("User with this email already exists.")
+        return value
