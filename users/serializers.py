@@ -50,3 +50,28 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop("password_repeat")
         password = validated_data.pop("password")
         return User.objects.create_user(password=password, **validated_data)
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        email = attrs["email"]
+        password = attrs["password"]
+
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                {"detail": "Invalid email or password."}
+            )
+
+        if not user.check_password(password):
+            raise serializers.ValidationError({"detail": "Invalid email or password."})
+
+        if not user.is_active:
+            raise serializers.ValidationError({"detail": "User account is inactive."})
+
+        attrs["user"] = user
+        return attrs

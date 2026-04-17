@@ -1,8 +1,10 @@
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users.serializers import RegisterSerializer, UserSerializer
+from users.serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from users.tokens import create_access_token
 
 
 class UsersHealthCheckView(APIView):
@@ -23,3 +25,35 @@ class RegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class LoginView(APIView):
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            detail = serializer.errors.get("detail", ["Login failed."])[0]
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.validated_data["user"]
+        token = create_access_token(user)
+
+        return Response(
+            {
+                "token": token,
+                "user": {
+                    "id": user.id,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "middle_name": user.middle_name,
+                    "email": user.email,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"user": UserSerializer(request.user).data})
