@@ -1,8 +1,16 @@
+from django.db import IntegrityError
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from users.models import BlacklistedToken, User
+from users.models import (
+    AccessRule,
+    BlacklistedToken,
+    BusinessElement,
+    Role,
+    User,
+    UserRole,
+)
 
 
 class RegisterViewTests(APITestCase):
@@ -262,3 +270,41 @@ class LoginViewTests(APITestCase):
         response = self.client.get(self.me_url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class RBACModelsTests(APITestCase):
+    def test_seed_roles_and_business_elements_exist(self):
+        self.assertTrue(Role.objects.filter(name="admin").exists())
+        self.assertTrue(Role.objects.filter(name="manager").exists())
+        self.assertTrue(Role.objects.filter(name="user").exists())
+        self.assertTrue(BusinessElement.objects.filter(code="profile").exists())
+        self.assertTrue(BusinessElement.objects.filter(code="users").exists())
+
+    def test_admin_has_full_access_rule_for_users(self):
+        access_rule = AccessRule.objects.get(
+            role__name="admin",
+            business_element__code="users",
+        )
+
+        self.assertTrue(access_rule.read_permission)
+        self.assertTrue(access_rule.read_all_permission)
+        self.assertTrue(access_rule.create_permission)
+        self.assertTrue(access_rule.update_permission)
+        self.assertTrue(access_rule.update_all_permission)
+        self.assertTrue(access_rule.delete_permission)
+        self.assertTrue(access_rule.delete_all_permission)
+
+    def test_user_role_relation_is_unique(self):
+        user = User.objects.create_user(
+            email="rbac@example.com",
+            password="strongpass123",
+            first_name="Rbac",
+            last_name="User",
+            middle_name="Test",
+        )
+        role = Role.objects.get(name="user")
+
+        UserRole.objects.create(user=user, role=role)
+
+        with self.assertRaises(IntegrityError):
+            UserRole.objects.create(user=user, role=role)
