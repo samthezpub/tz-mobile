@@ -1,10 +1,10 @@
-from rest_framework import authentication, exceptions
+from rest_framework import authentication
 
 from users.models import User
 from users.tokens import decode_access_token
 
 
-class JWTAuthentication(authentication.BaseAuthentication):
+class BearerTokenAuthentication(authentication.BaseAuthentication):
     keyword = "Bearer"
 
     def authenticate(self, request):
@@ -20,16 +20,19 @@ class JWTAuthentication(authentication.BaseAuthentication):
 
         try:
             payload = decode_access_token(token)
-        except ValueError as error:
-            raise exceptions.AuthenticationFailed(str(error))
+        except ValueError:
+            return None
 
         user_id = payload.get("user_id")
         if not user_id:
-            raise exceptions.AuthenticationFailed("Token payload is invalid.")
+            return None
 
         try:
             user = User.objects.get(id=user_id, is_active=True)
         except User.DoesNotExist:
-            raise exceptions.AuthenticationFailed("User not found.")
+            return None
 
         return (user, token)
+
+    def authenticate_header(self, request):
+        return self.keyword

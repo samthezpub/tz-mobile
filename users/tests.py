@@ -117,3 +117,15 @@ class LoginViewTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["user"]["email"], self.user.email)
+
+    def test_get_me_with_invalid_bearer_token(self):
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer invalid-token")
+
+        response = self.client.get(self.me_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_get_me_without_token(self):
+        response = self.client.get(self.me_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
